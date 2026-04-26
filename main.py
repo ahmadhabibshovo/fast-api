@@ -1,47 +1,70 @@
 import time
-from fastapi import FastAPI
-from pydantic import BaseModel, HttpUrl
 import psycopg2
+from fastapi import FastAPI, HTTPException, status
+from pydantic import BaseModel, HttpUrl
 from psycopg2.extras import RealDictCursor
 
-app = FastAPI()
+# --- App Initialization ---
+app = FastAPI(title="AIQuest Course API")
 
-# define request body schema
+# --- Database Configuration & Initialization ---
+def get_db_connection():
+    """Establishes and returns a connection to the PostgreSQL database."""
+    while True:
+        try:
+            conn = psycopg2.connect(
+                host="localhost",
+                user="postgres",
+                password="123456",
+                database="aiquest",
+                port="8080"  # Specific port requested by the user
+            )
+            print('Database connection is open')
+            return conn
+        except psycopg2.Error as e:
+            print(f"Error connecting to the database: {e}")
+            time.sleep(5)
+
+# Initialize global connection and cursor
+conn = get_db_connection()
+cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+def init_db():
+    """Ensures the necessary database tables exist."""
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS course (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        instructor TEXT NOT NULL,
+        duration FLOAT NOT NULL,
+        website TEXT NOT NULL
+    );
+    """)
+    conn.commit()
+
+init_db()
+
+# --- Pydantic Schemas ---
 class Course(BaseModel):
     name: str
     instructor: str
     duration: float
     website: HttpUrl
 
-while True:
-    try:
-        conn = psycopg2.connect(
-            host="localhost",
-            user="postgres",
-            password="123456",
-            database="aiquest",
-            port="8080"  # Standard Postgres port
-        )
-        print('Database connection is open')
-        break
-    except psycopg2.Error as e:
-        print(f"Error connecting to the database: {e}")
-        time.sleep(5)
+# --- Basic Routes ---
+@app.get("/")
+def home():
+    return {"message": "Welcome to AIQuest FastAPI"}
 
-cursor = conn.cursor(cursor_factory=RealDictCursor)
-# Ensure the courses table exists
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS course (
-    id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    instructor TEXT NOT NULL,
-    duration FLOAT NOT NULL,
-    website TEXT NOT NULL
-);
-""")
-conn.commit()
-@app.post("/courses")
+@app.get("/about")
+def about():
+    return {"about": "This is a test API for managing courses"}
+
+# --- Course CRUD Routes ---
+
+@app.post("/courses", status_code=status.HTTP_201_CREATED)
 def create_course(course: Course):
+    """Creates a new course entry in the database."""
     insert_query = """
         INSERT INTO course (name, instructor, duration, website)
         VALUES (%s, %s, %s, %s)
@@ -50,42 +73,45 @@ def create_course(course: Course):
     cursor.execute(insert_query, (course.name, course.instructor, course.duration, str(course.website)))
     new_course = cursor.fetchone()
     conn.commit()
-    return {"message": f"course {course.name} has been created successfully", "course": new_course}
-
+    return {
+        "message": f"Course '{course.name}' has been created successfully",
+        "course": new_course
+    }
 
 @app.get("/courses")
-def get_courses():
-    # Explicitly list columns to guarantee the order in the JSON response
+def get_all_courses():
+    """Retrieves all courses from the database."""
     cursor.execute("SELECT id, name, instructor, duration, website FROM course ORDER BY id ASC")
     courses = cursor.fetchall()
-    return {"message": "courses retrieved successfully", "courses": courses}
-
-
+    return {
+        "message": "Courses retrieved successfully",
+        "courses": courses
+    }
 
 @app.get("/courses/{id}")
-def get_courses(id: int):
+def get_course_by_id(id: int):
+    """Retrieves a single course by its unique ID."""
     cursor.execute("SELECT id, name, instructor, duration, website FROM course WHERE id = %s", (id,))
     course = cursor.fetchone()
-    if course:
-        return {"message": "course retrieved successfully", "course": course}
-    else:
-        return {"message": "course not found"}
-
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    return {
+        "message": "Course retrieved successfully",
+        "course": course
+    }
 
 @app.delete("/courses/{id}")
-def delete_courses(id: int):    
-    cursor.execute("DELETE FROM course WHERE id = %s RETURNING id, name, instructor, duration, website", (id,))
+def delete_course_by_id(id: int):    
+    """Deletes a course from the database and returns its details."""
+    delete_query = "DELETE FROM course WHERE id = %s RETURNING id, name, instructor, duration, website"
+    cursor.execute(delete_query, (id,))
     deleted_course = cursor.fetchone()
     conn.commit()
-    if deleted_course:  
-        return {"message": "course deleted successfully", "course": deleted_course}
-    else:
-        return {"message": "course not found"}
+    
+    if not deleted_course:
+        raise HTTPException(status_code=404, detail="Course not found")
         
-@app.get("/")
-def aiquest():
-    return {'fast':'api'}
-
-@app.get("/about")
-def about():
-    return {'about':'test api'}
+    return {
+        "message": "Course deleted successfully",
+        "course": deleted_course
+    }
