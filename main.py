@@ -1,6 +1,7 @@
 import time
 import psycopg2
 from fastapi import FastAPI, HTTPException, status
+from typing import Optional
 from pydantic import BaseModel, HttpUrl
 from psycopg2.extras import RealDictCursor
 
@@ -51,6 +52,12 @@ class Course(BaseModel):
     duration: float
     website: HttpUrl
 
+class CourseUpdate(BaseModel):
+    name: Optional[str] = None
+    instructor: Optional[str] = None
+    duration: Optional[float] = None
+    website: Optional[HttpUrl] = None
+
 # --- Basic Routes ---
 @app.get("/")
 def home():
@@ -86,6 +93,45 @@ def get_all_courses():
     return {
         "message": "Courses retrieved successfully",
         "courses": courses
+    }
+
+@app.patch("/courses/{id}")
+def update_course(id: int, course: CourseUpdate):
+    """Updates specific fields of an existing course entry."""
+    # Convert the pydantic model to a dict, excluding fields that weren't sent
+    update_data = course.dict(exclude_unset=True)
+    
+    if not update_data:
+        raise HTTPException(status_code=400, detail="At least one field must be provided for update")
+
+    # Build the SQL UPDATE statement dynamically
+    fields = []
+    values = []
+    for key, value in update_data.items():
+        fields.append(f"{key} = %s")
+        # Ensure HttpUrl is converted to a string for the database
+        values.append(str(value) if key == "website" else value)
+    
+    # Add the ID to the end of the values list for the WHERE clause
+    values.append(id)
+    
+    update_query = f"""
+        UPDATE course 
+        SET {', '.join(fields)}
+        WHERE id = %s
+        RETURNING id, name, instructor, duration, website;
+    """
+    
+    cursor.execute(update_query, tuple(values))
+    updated_course = cursor.fetchone()
+    conn.commit()
+    
+    if not updated_course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+        
+    return {
+        "message": "Course updated successfully",
+        "course": updated_course
     }
 
 @app.get("/courses/{id}")
