@@ -48,8 +48,8 @@ def create_course(course: Course):
         RETURNING id, name, instructor, duration, website;
     """
     cursor.execute(insert_query, (course.name, course.instructor, course.duration, str(course.website)))
-    conn.commit()
     new_course = cursor.fetchone()
+    conn.commit()
     return {"message": f"course {course.name} has been created successfully", "course": new_course}
 
 
@@ -71,6 +71,17 @@ def get_courses(id: int):
     else:
         return {"message": "course not found"}
 
+
+@app.delete("/courses/{id}")
+def delete_courses(id: int):    
+    cursor.execute("DELETE FROM course WHERE id = %s RETURNING id, name, instructor, duration, website", (id,))
+    deleted_course = cursor.fetchone()
+    conn.commit()
+    if deleted_course:  
+        return {"message": "course deleted successfully", "course": deleted_course}
+    else:
+        return {"message": "course not found"}
+        
 @app.get("/")
 def aiquest():
     return {'fast':'api'}
