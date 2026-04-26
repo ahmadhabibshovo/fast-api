@@ -1,5 +1,6 @@
 from pydantic import BaseModel, HttpUrl, ConfigDict
 from typing import Optional
+from datetime import datetime
 
 class CourseBase(BaseModel):
     name: str
@@ -20,3 +21,16 @@ class Course(CourseBase):
     id: int
 
     model_config = ConfigDict(from_attributes=True)
+
+class UserBase(BaseModel):
+    email: str
+
+class UserCreate(UserBase):
+    password: str
+
+class UserOut(UserBase):
+    id: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
