@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from . import models
 from .database import engine
-from .routers import courses
+from .routers import courses, users, auth
 
 # Create the database tables
 models.Base.metadata.create_all(bind=engine)
@@ -19,3 +19,5 @@ def about():
 
 # Include routers
 app.include_router(courses.router)
+app.include_router(users.router)
+app.include_router(auth.router)
