@@ -40,3 +40,6 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     id: Optional[str] = None
+
+class SocialLoginRequest(BaseModel):
+    token: str
